@@ -1,231 +1,218 @@
 ﻿//
-// Created by Xi on March 2022
+// Created by Solmaz on Jan 2025
 //
 
-#include "alg.h"
-int _lsh_UB=0;
-//double _chi2inv;
-//double _chi2invSqr;
-//double _coeff;
+#include "alg.h"  // Assuming alg.h contains necessary class and function definitions  
+#include <iostream>
+#include <iomanip>
+#include <chrono>
+#include <numeric>
+#include <vector>
+#include <random>
+#include <string>
+#include <algorithm>
+#include <set>
+#include <omp.h> // For OpenMP parallelization
 
-int main(int argc, char const* argv[])
-{
-
-#if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L) && (_MSC_VER >= 1913))
-	std::cout<<"C++17!\n";
-#else
-#endif // _HAS_CXX17
-
-
-	float c = 1.5;
-	unsigned k = 50;
-	unsigned L = 8, K = 10;//NUS
-	//L = 10, K = 5;
-	float beta = 0.1;
-	unsigned Qnum = 100;
-	float W = 1.0f;
-	int T = 24;
-	int efC = 80;
-	L = 2;
-	K = 18;
-	double pC = 0.95, pQ = 0.9;
-	std::string datasetName;
-	bool isbuilt = 0;
-	_lsh_UB=0;
-	if (argc > 1) datasetName = argv[1];
-	if (argc > 2) isbuilt = std::atoi(argv[2]);
-	if (argc > 3) k = std::atoi(argv[3]);
-	if (argc > 4) L = std::atoi(argv[4]);
-	if (argc > 5) K = std::atoi(argv[5]);
-	if (argc > 6) T = std::atoi(argv[6]);
-	if (argc > 7) efC = std::atoi(argv[7]);
-	if (argc > 8) pC = std::atof(argv[8]);
-	if (argc > 9) pQ = std::atof(argv[9]);
-	if (argc > 10) _lsh_UB = std::atoi(argv[10]);
-	if (argc == 1) {
-		const std::string datas[] = { "audio","mnist","cifar","NUS","Trevi","gist","deep1m","skew_10M_8d","gauss_8d","gauss_25w_128" };
-		datasetName = datas[0];
-		//datasetName = "sift1B"; 
-		setW(datasetName, W);
-		std::cout << "Using the default configuration!\n\n";
-	}
-
-	#if defined(unix) || defined(__unix__)
-		std::string data_fold = "/home/xizhao/dataset/", index_fold = "./indexes/";
-	#else
-		std::string data_fold = "E:/Dataset_for_c/", index_fold = data_fold + "graphIndex/";
-	#endif
-
-
-	
-	std::cout << "Using LSH-Graph for " << datasetName << " ..." << std::endl;
-	std::cout << "c=        " << c << std::endl;
-	std::cout << "k=        " << k << std::endl;
-	std::cout << "L=        " << L << std::endl;
-	std::cout << "K=        " << K << std::endl;
-	std::cout << "T=        " << T << std::endl;
-	std::cout << "lsh_UB=   " << _lsh_UB << std::endl;
-	Preprocess prep(data_fold + datasetName + ".data", data_fold + "ANN/" + datasetName + ".bench_graph");
-
-	//return 0;
-
-	showMemoryInfo();
-
-	std::string path = index_fold + datasetName + ".index";
-	Parameter param1(prep, L, K, 1.0f);
-	param1.W = 0.3f;
-	zlsh* gLsh= nullptr;
-	divGraph* divG = nullptr;
-	if (isbuilt&&find_file(path + "_divGraph")) {
-		divG = new divGraph(&prep, path + "_divGraph", pQ);
-		
-		divG->L = L;
-		if (L == 0) divG->coeffq = 0;
-	}
-	else {
-		if (!GenericTool::CheckPathExistence(index_fold.c_str())) {
-			GenericTool::EnsurePathExistence(index_fold.c_str());
-		}
-		divG = new divGraph(prep, param1, path + "_divGraph", T, efC, pC, pQ);
-	}
-
-	//divG->traverse();
-	//return 0;
-
-	std::cout << "Loading FastGraph...\n";
-	fastGraph* fsG = new fastGraph(divG);
-
-	std::stringstream ss;
-	ss  << "*******************************************************************************************************\n"
-		<< "The result of LSH-G for " << datasetName << " is as follow: "<< "k=" << k<< ", probQ = " << pQ << ", L = " << L << ", K = " << K << ", T = " << T
-		<< "\n"
-		<< "******************************************************************************************************\n";
-
-	ss << std::setw(_lspace) << "algName"
-		<< std::setw(_sspace) << "k"
-		<< std::setw(_sspace) << "ef"
-		<< std::setw(_lspace) << "Time"
-		<< std::setw(_lspace) << "Recall"
-		//<< std::setw(_lspace) << "Ratio"
-		<< std::setw(_lspace) << "Cost"
-		<< std::setw(_lspace) << "CPQ1"
-		<< std::setw(_lspace) << "CPQ2"
-		<< std::setw(_lspace) << "Pruning"
-		//<< std::setw(_lspace) << "MaxHop"
-		<< std::endl
-		<< std::endl;
-
-	std::cout << ss.str();
-
-	std::string query_result(divG->getFilename());
-	auto idx = query_result.rfind('/');
-	query_result.assign(query_result.begin(), query_result.begin() + idx + 1);
-	query_result += "result.txt";
-	std::ofstream os(query_result, std::ios_base::app);
-	os.seekp(0, std::ios_base::end);
-	os << ss.str();
-	os.close();
-
-	std::vector<size_t> efs;
-	for (int i = k; i < 100; i += 10) {
-		efs.push_back(i);
-	}
-
-#ifdef _DEBUG
-#else
-	for (int i = 100; i < 250; i += 10) {
-		efs.push_back(i);
-	}
-	for (int i = 250; i < 300; i += 50) {
-		efs.push_back(i);
-	}
-	//for (int i = 500; i < 3000; i += 300) {
-	//	efs.push_back(i);
-	//}
-	//if (datasetName == "mnist") {
-	//	for (int i = 500; i < 6000; i += 300) {
-	//		efs.push_back(i);
-	//	}
-	//}
-#endif // _DEBUG
-	if (k == 50) {
-		// for (auto& ef : efs) {
-		// 	if (divG) divG->ef = ef;
-		// 	graphSearch(c, k, divG, prep, beta, datasetName, data_fold, 2);
-		// }
-		// std::cout << std::endl;
-	}
-	else {
-		std::vector<int> ks = { 1,10,20,30,40,50,60,70,80,90,100 };
-
-		for (auto& kk : ks) {
-			k = kk;
-
-			if (divG) divG->ef = k + 150;
-			graphSearch(c, k, divG, prep, beta, datasetName, data_fold, 2);
-
-			//for (auto& ef : efs) {
-			//	if (ef < k) continue;
-			//	if (divG) divG->ef = ef;
-			//	graphSearch(c, kk, divG, prep, beta, datasetName, data_fold, 2);
-			//}
-			std::cout << std::endl;
-		}
-	}
-	
-
-	//for (auto& ef : efs) {
-	//	if (divG) divG->ef = ef;
-	//	graphSearch(c, k, divG, prep, beta, datasetName, data_fold, 3);
-	//}
-	//std::cout << std::endl;
-	efs={200};
-	for (auto& ef : efs) {
-		if (fsG) fsG->ef = ef;
-		graphSearch(c, k, fsG, prep, beta, datasetName, data_fold, 0);
-	}
-
-	std::vector<float> pts={0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95};
-
-	std::cout << std::endl;
-
-	//for (auto& ef : efs) {
-	//	if (fsG) fsG->ef = ef;
-	//	graphSearch(c, k, fsG, prep, beta, datasetName, data_fold, 1);
-	//}
-	//std::cout << std::endl;
-
-	time_t now = time(0);
-	
-	
-	time_t zero_point = 1635153971 - 17 * 3600 - 27 * 60;//Let me set the time at 2021.10.25. 17:27 as the zero point
-	size_t diff = (size_t)(now - zero_point);
-
-	//ss.flush();
-	//ss.erase_event();
-	ss.str("");
-#if defined(unix) || defined(__unix__)
-	llt lt(diff);
-#endif
+int _lsh_UB = 0;
 
 #if defined(unix) || defined(__unix__)
-	ss << "\n******************************************************************************************************\n"
-		<< "                                                                                    "
-		<< lt.date << '-' << lt.h << ':' << lt.m << ':' << lt.s
-		<< "\n*****************************************************************************************************\n\n\n";
+std::string data_fold = "/home/xizhao/dataset/";
+std::string index_fold = "./indexes/";
 #else
-	tm* ltm = new tm[1];
-	localtime_s(ltm, &now);
-	ss << "\n******************************************************************************************************\n"
-		<< "                                                                                    "
-		<< ltm->tm_mon + 1 << '-' << ltm->tm_mday << ' ' << ltm->tm_hour << ':' << ltm->tm_min
-		<< "\n*****************************************************************************************************\n\n\n";
+std::string data_fold = "E:/Dataset_for_c/";
+std::string index_fold = data_fold + "graphIndex/";
 #endif
-	std::ofstream os1(query_result, std::ios_base::app);
-	os1.seekp(0, std::ios_base::end);
-	os1 << ss.str();
-	os1.close();
-	std::cout << ss.str();
-	return 0;
+
+double convertToSeconds(double milliseconds) {
+    return milliseconds / 1000.0;
 }
 
+// Replace invalid values (e.g., -1) with defaults
+int replaceInvalidValue(int value, int defaultValue) {
+    return (value == -1) ? defaultValue : value;
+}
+
+std::string getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    char buffer[100];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", std::localtime(&now_time));
+    return std::string(buffer);
+}
+
+int main(int argc, char const* argv[]) {
+    // Ensure C++17 support
+    #if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L) && (_MSC_VER >= 1913))
+    std::cout << "C++17 enabled!\n";
+    #else
+    std::cout << "Using C++ version < 17\n";
+    #endif
+
+    // Log: Starting parameter initialization
+    std::cout << "Initializing parameters...\n";
+
+    // Parameters initialization
+    float c = 1.5;
+    unsigned k = 50;
+    unsigned L = 2, K = 18;
+    float beta = 0.1;
+    unsigned Qnum = 100;
+    float W = 1.0f;
+    int T = 24;
+    int efC = 80;  // Set default ef to 80
+    L = 2;
+    K = 18;
+    double pC = 0.95, pQ = 0.9;
+    std::string datasetName;
+    bool isBuilt = false;
+    _lsh_UB = 0;
+
+    // Read command-line arguments
+    if (argc > 1) datasetName = argv[1];
+    if (argc > 2) isBuilt = std::atoi(argv[2]);
+    if (argc > 3) k = std::atoi(argv[3]);
+    if (argc > 4) L = std::atoi(argv[4]);
+    if (argc > 5) K = std::atoi(argv[5]);
+    if (argc > 6) T = std::atoi(argv[6]);
+    if (argc > 7) efC = replaceInvalidValue(std::atoi(argv[7]), 80); // Replace invalid ef value with 80
+    if (argc > 8) pC = std::atof(argv[8]);
+    if (argc > 9) pQ = std::atof(argv[9]);
+    if (argc > 10) _lsh_UB = std::atoi(argv[10]);
+
+    // Set default dataset and parameters
+    if (argc == 1) {
+        const std::string datas[] = {"audio", "mnist", "cifar", "NUS", "Trevi", "gist", "deep1m", "skew_10M_8d", "gauss_8d", "gauss_25w_128"};
+        datasetName = datas[0];
+        setW(datasetName, W);
+        std::cout << "Using the default configuration!\n\n";
+    }
+
+    // Log: Dataset and parameters
+    std::cout << "\n*** Graph Initialization ***\n";
+    std::cout << "Dataset: " << datasetName << "\n";
+    std::cout << "Parameters:\n"
+              << "c = " << c << "\n"
+              << "k = " << k << "\n"
+              << "L = " << L << "\n"
+              << "K = " << K << "\n"
+              << "T = " << T << "\n"
+              << "efC = " << efC << "\n"
+              << "pC = " << pC << "\n"
+              << "pQ = " << pQ << "\n";
+
+    // Preprocessing
+    std::cout << "Loading dataset and preparing benchmarks...\n";
+    auto startPreprocessing = std::chrono::high_resolution_clock::now();
+    Preprocess prep(data_fold + datasetName + ".data", data_fold + "ANN/" + datasetName + ".bench_graph");
+    auto endPreprocessing = std::chrono::high_resolution_clock::now();
+    double preprocessingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endPreprocessing - startPreprocessing).count();
+    std::cout << "Dataset Preprocessing Completed in: " << convertToSeconds(preprocessingTime) << " seconds\n";
+
+    // Graph initialization
+    std::string path = index_fold + datasetName + ".index";
+    Parameter param1(prep, L, K, 1.0f);
+    param1.W = 0.3f;
+    divGraph* divG = nullptr;
+
+    auto startConstruction = std::chrono::high_resolution_clock::now();
+    if (isBuilt && find_file(path + "_divGraph")) {
+        std::cout << "Loading existing graph index...\n";
+        divG = new divGraph(&prep, path + "_divGraph", pQ);
+        divG->L = L;
+    } else {
+        std::cout << "Building new graph index...\n";
+        if (!GenericTool::CheckPathExistence(index_fold.c_str())) {
+            GenericTool::EnsurePathExistence(index_fold.c_str());
+        }
+
+        auto startDistanceCalc = std::chrono::high_resolution_clock::now();
+        divG = new divGraph(prep, param1, path + "_divGraph", T, efC, pC, pQ);
+        auto endDistanceCalc = std::chrono::high_resolution_clock::now();
+        double distanceCalcTime = std::chrono::duration_cast<std::chrono::milliseconds>(endDistanceCalc - startDistanceCalc).count();
+        std::cout << "Distance Calculation Completed in: " << convertToSeconds(distanceCalcTime) << " seconds\n";
+    }
+    auto endConstruction = std::chrono::high_resolution_clock::now();
+
+    double constructionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endConstruction - startConstruction).count();
+    std::cout << "\nGraph Construction Completed in: " << convertToSeconds(constructionTime) << " seconds\n";
+
+    // Incremental Graph Construction
+    std::cout << "\n*** Incremental Graph Construction ***\n";
+    std::vector<int> incremental_nodes(prep.data.N);
+    std::iota(incremental_nodes.begin(), incremental_nodes.end(), 0);
+    std::shuffle(incremental_nodes.begin(), incremental_nodes.end(), std::default_random_engine(std::chrono::system_clock::now().time_since_epoch().count()));
+
+    size_t batch_size = 3000;
+    size_t total_inserted = 0;
+
+    auto incrementalStartTime = std::chrono::high_resolution_clock::now();
+    for (size_t batch_start = 0; batch_start < incremental_nodes.size(); batch_start += batch_size) {
+        size_t batch_end = std::min(batch_start + batch_size, incremental_nodes.size());
+
+        auto batchStartTime = std::chrono::high_resolution_clock::now();
+        std::cout << getCurrentTimestamp() << " - Processing batch " << (batch_start / batch_size + 1) << "...\n";
+
+ //       #pragma omp parallel for num_threads(8)
+ //       for (size_t i = batch_start; i < batch_end; ++i) {
+ //           divG->insert(incremental_nodes[i]);
+ //       }
+
+        auto batchEndTime = std::chrono::high_resolution_clock::now();
+        auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(batchEndTime - batchStartTime).count();
+
+        total_inserted += (batch_end - batch_start);
+        std::cout << getCurrentTimestamp() << " - Batch completed in " << (batchDuration / 1000.0) << " milliseconds. Total inserted: " << total_inserted << "\n";
+    }
+    auto incrementalEndTime = std::chrono::high_resolution_clock::now();
+    double incrementalTime = std::chrono::duration_cast<std::chrono::milliseconds>(incrementalEndTime - incrementalStartTime).count();
+
+    // Batch Graph Construction
+    std::cout << "\n*** Batch Graph Construction ***\n";
+    auto batchStartTime = std::chrono::high_resolution_clock::now();
+    divGraph* batchDivG = new divGraph(prep, param1, path + "_divGraph", T, efC, pC, pQ);
+	divG->ef = 200;
+ //   #pragma omp parallel for num_threads(8)
+ //   for (size_t i = 0; i < incremental_nodes.size(); ++i) {
+ //       batchDivG->insert(incremental_nodes[i]);
+ //   }
+
+    auto batchEndTime = std::chrono::high_resolution_clock::now();
+    double batchTime = std::chrono::duration_cast<std::chrono::milliseconds>(batchEndTime - batchStartTime).count();
+
+    std::cout << "Incremental Time: " << convertToSeconds(incrementalTime) << " seconds\n";
+    std::cout << "Batch Time: " << convertToSeconds(batchTime) << " seconds\n";
+
+    // Evaluate Recall and Query Performance
+    std::cout << "\n*** Evaluating Graph ***\n";
+	std::cout << "******************************************************************************************************\n";
+    std::cout << std::left << std::setw(18) << "Algorithm"
+              << std::setw(8) << "k"
+              << std::setw(7) << "ef"
+              << std::setw(13) << "Time(s)"
+              << std::setw(12) << "Recall"
+              << std::setw(12) << "Cost"
+              << std::setw(12) << "CPQ1"
+              << std::setw(11) << "CPQ2"
+              << std::setw(12) << "Pruning" << "\n";
+std::cout << "******************************************************************************************************\n";
+    auto startQuery = std::chrono::high_resolution_clock::now();
+    graphSearch(c, k, divG, prep, beta, datasetName, data_fold, efC); // Pass efC directly
+    auto endQuery = std::chrono::high_resolution_clock::now();
+
+    double queryTime = std::chrono::duration_cast<std::chrono::milliseconds>(endQuery - startQuery).count();
+    std::cout << "\nQuery Completed in: " << convertToSeconds(queryTime) << " seconds\n";
+
+    // Summary
+    std::cout << "\n*** Summary ***\n";
+    std::cout << "Total Preprocessing Time: " << convertToSeconds(preprocessingTime) << " seconds\n";
+    std::cout << "Total Graph Construction Time: " << convertToSeconds(constructionTime) << " seconds\n";
+    std::cout << "Total Query Time: " << convertToSeconds(queryTime) << " seconds\n";
+    std::cout << "Total Inserted Nodes: " << total_inserted << "\n";
+	std::cout << "Current ef value: " << divG->ef << "\n";
+    // Cleanup
+    delete divG;
+    delete batchDivG;
+
+    return 0;
+}
