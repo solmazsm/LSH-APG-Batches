@@ -617,7 +617,18 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 				break;
 			}
 		}
+
+		//Solmaz
+		// Log the decision for this neighbor
+    logFile << "Iteration " << i 
+            << ": Considering Neighbor ID=" << curRes.id 
+            << ", Distance=" << curRes.dist;
+			// end update Solmaz
+
 		if (flag) {
+			//Solmaz
+			 logFile << " - Selected\n";
+			 //Solmaz
 			if (choose_num < i) {
 				Res temp = arr[i];
 				arr[i] = arr[choose_num];
@@ -625,7 +636,22 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 			}
 			choose_num++;
 		}
-	}
+		else {
+			//Solmaz
+        logFile << " - Skipped due to closer neighbor\n";
+		//Solmaz
+	}}
+//Solmaz
+// Log the final chosen neighbors
+logFile << "Final chosen neighbors for this node: \n";
+for (int i = 0; i < choose_num; ++i) {
+    logFile << "Neighbor " << i << ": ID=" << arr[i].id 
+            << ", Distance=" << arr[i].dist << "\n";
+			//Solmaz
+
+
+}
+
 
 	size_res = choose_num;
 	std::swap(arr[size_res - 1], arr[0]);
