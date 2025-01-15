@@ -6,6 +6,15 @@
 #include <mutex>
 #include <boost/math/distributions/chi_squared.hpp>
 
+
+#include <chrono>
+#include <fstream>
+#include <vector>
+
+//solmaz
+std::ofstream logFile("lsh_apg_metrics_deep1M.csv");
+//end solmaz
+
 #if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L) && (_MSC_VER >= 1913))
 #include <shared_mutex>
 typedef std::shared_mutex mp_mutex;
@@ -470,6 +479,9 @@ int  divGraph::searchLSH(int pId, std::vector<zint>& keys, std::priority_queue<R
 
 void divGraph::insertLSHRefine(int pId)
 {
+	//solmaz
+	auto startTime = std::chrono::high_resolution_clock::now();
+	//end solmaz
 	std::priority_queue<Res> candTable;
 	std::vector<zint> keys(L);
 	threadPoollib::VisitedList* vl = visited_list_pool_->getFreeVisitedList();
@@ -523,6 +535,16 @@ void divGraph::insertLSHRefine(int pId)
 		write_lock lock_h(hash_locks_[j]);
 		hashTables[j].insert({ keys[j],pId });
 	}
+	
+	//solmaz
+	auto endTime = std::chrono::high_resolution_clock::now();
+    double insertionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+
+    // Log metrics
+    logFile << pId << "," << insertionTime << ","  << std::endl;
+
+    
+	//end solmaz
 }
 
 int divGraph::searchInBuilding(int p, std::priority_queue<Res, std::vector<Res>, std::greater<Res>>& eps, Res* arr, int& size_res,
