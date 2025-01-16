@@ -12,7 +12,7 @@
 #include <vector>
 
 //solmaz
-std::ofstream logFile("lsh_apg_metrics_deep1M.csv");
+std::ofstream logFile("lsh_apg_metrics_mnist_v2.csv");
 //end solmaz
 
 #if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L) && (_MSC_VER >= 1913))
@@ -457,8 +457,20 @@ int  divGraph::searchLSH(int pId, std::vector<zint>& keys, std::priority_queue<R
 					candTable.push(res_pair);
 					//checkedArrs_local[res_pair.id] = tag;
 					checkedArrs_local.emplace(res_pair.id);
-				}
+				     // Log selected candidate
+        logFile << "Candidate ID=" << res_pair.id 
+                << ", Distance=" << res_pair.dist 
+				<< ", Local Density=" << linkLists[res_pair.id]->size()
+                << " - Selected\n";
+    } else {
+        // Log skipped candidate
+        logFile << "Candidate ID=" << res_pair.id 
+                << " - Skipped (already checked)\n";
+    }
 				if (++rpos[t.id] == hashTables[t.id].end()) {
+					//solmaz
+					logFile << "Reached the end of hash table for ID=" << t.id << "\n";
+					//solmaz
 					break;
 				}
 			}
@@ -541,9 +553,13 @@ void divGraph::insertLSHRefine(int pId)
     double insertionTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
     // Log metrics
-    logFile << pId << "," << insertionTime << ","  << std::endl;
-
-    
+	int localDensity = linkLists[pId]->size(); // Number of neighbors for this node
+    //logFile << pId << "," << insertionTime << ","  << localDensity << std::endl;
+	logFile << "Candidate ID=" << pId 
+            << ", InsertionTime=" << insertionTime << "ms"
+            << ", LocalDensity=" << localDensity
+            << std::endl;
+    logFile.flush();
 	//end solmaz
 }
 
@@ -600,7 +616,10 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 	if (size_res <= T) return;
 
 	int old_res = size_res;
-
+//Solmaz
+ // Start timing the iteration
+    auto iterStart = std::chrono::high_resolution_clock::now();
+	//Solmaz
 	int choose_num = 0;
 	std::sort(arr, arr + size_res);
 	//std::priority_queue<Res, std::vector<Res>, std::greater<Res>> res;
@@ -620,14 +639,17 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 
 		//Solmaz
 		// Log the decision for this neighbor
-    logFile << "Iteration " << i 
+    	logFile << "Iteration " << i 
             << ": Considering Neighbor ID=" << curRes.id 
             << ", Distance=" << curRes.dist;
 			// end update Solmaz
 
 		if (flag) {
 			//Solmaz
-			 logFile << " - Selected\n";
+			 logFile << "Neighbor ID=" << curRes.id << ", Distance=" << curRes.dist
+        << (flag ? " - Selected" : " - Skipped due to closer neighbor")
+        << ", Local Density=" << linkLists[curRes.id]->size() // Neighbor's density
+        << "\n";
 			 //Solmaz
 			if (choose_num < i) {
 				Res temp = arr[i];
@@ -636,11 +658,8 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 			}
 			choose_num++;
 		}
-		else {
-			//Solmaz
-        logFile << " - Skipped due to closer neighbor\n";
-		//Solmaz
-	}}
+		
+	}
 //Solmaz
 // Log the final chosen neighbors
 logFile << "Final chosen neighbors for this node: \n";
