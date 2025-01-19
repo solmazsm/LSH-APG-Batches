@@ -6,6 +6,15 @@
 #include <mutex>
 #include <boost/math/distributions/chi_squared.hpp>
 
+
+#include <chrono>
+#include <fstream>
+#include <vector>
+
+//solmaz
+std::ofstream logFile("lsh_apg_metrics_mnist_v4.csv");
+//end solmaz
+
 #if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L) && (_MSC_VER >= 1913))
 #include <shared_mutex>
 typedef std::shared_mutex mp_mutex;
@@ -117,7 +126,7 @@ typedef std::priority_queue<std::pair<Res, int>, std::vector<std::pair<Res, int>
 
 class divGraph :public zlsh
 {
-public:
+private:
 
 	std::string file;
 	size_t edgeTotal = 0;
@@ -133,12 +142,9 @@ public:
 	void buildExactLikeHNSW(Preprocess* prep);
 	void buildChunks();
 	void insertPart(int pId, int ep, int mT, int mC, std::vector<std::vector<Res>>& partEdges);
-	// add this line by Solmaz
-	void batchInsertLSHRefine(const std::vector<int>& batch);  // Add this line
+
 public:
 	//Only for construction, not saved
-	// Add this line to declare the insert function
-	void insert(int pId); 
 	int maxT = -1;
 	std::atomic<size_t> compCostConstruction{ 0 };
 	std::atomic<size_t> pruningConstruction{ 0 };
@@ -451,8 +457,20 @@ int  divGraph::searchLSH(int pId, std::vector<zint>& keys, std::priority_queue<R
 					candTable.push(res_pair);
 					//checkedArrs_local[res_pair.id] = tag;
 					checkedArrs_local.emplace(res_pair.id);
-				}
+				     // Log selected candidate
+        logFile << "Candidate ID=" << res_pair.id 
+                << ", Distance=" << res_pair.dist 
+				<< ", Local Density=" << linkLists[res_pair.id]->size()
+                << " - Selected\n";
+    } else {
+        // Log skipped candidate
+        logFile << "Candidate ID=" << res_pair.id 
+                << " - Skipped (already checked)\n";
+    }
 				if (++rpos[t.id] == hashTables[t.id].end()) {
+					//solmaz
+					logFile << "Reached the end of hash table for ID=" << t.id << "\n";
+					//solmaz
 					break;
 				}
 			}
@@ -473,6 +491,9 @@ int  divGraph::searchLSH(int pId, std::vector<zint>& keys, std::priority_queue<R
 
 void divGraph::insertLSHRefine(int pId)
 {
+	//solmaz
+	auto startTime = std::chrono::high_resolution_clock::now();
+	//end solmaz
 	std::priority_queue<Res> candTable;
 	std::vector<zint> keys(L);
 	threadPoollib::VisitedList* vl = visited_list_pool_->getFreeVisitedList();
@@ -512,6 +533,7 @@ void divGraph::insertLSHRefine(int pId)
 	//Res* arr = new Res[len];
 	//memcpy(arr, linkLists[pId]->neighbors, len * sizeof(Res));
 	lock.unlock();
+	// Insert neighbors and update hash tables//solmaz
 	for (int pos = 0; pos < len; ++pos) {
 		auto& x = linkLists[pId]->neighbors[pos];
 		int& qId = x.id;
@@ -526,6 +548,21 @@ void divGraph::insertLSHRefine(int pId)
 		write_lock lock_h(hash_locks_[j]);
 		hashTables[j].insert({ keys[j],pId });
 	}
+	
+	//solmaz
+	auto endTime = std::chrono::high_resolution_clock::now();
+    double insertionTime = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() * 1e-6;
+
+
+    // Log metrics
+	int localDensity = linkLists[pId]->size(); // Number of neighbors for this node
+    //logFile << pId << "," << insertionTime << ","  << localDensity << std::endl;
+	logFile << "Candidate ID=" << pId 
+            << ", InsertionTime=" << insertionTime << "ms"
+            << ", LocalDensity=" << localDensity
+            << std::endl;
+    logFile.flush();
+	//end solmaz
 }
 
 int divGraph::searchInBuilding(int p, std::priority_queue<Res, std::vector<Res>, std::greater<Res>>& eps, Res* arr, int& size_res,
@@ -581,7 +618,10 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 	if (size_res <= T) return;
 
 	int old_res = size_res;
-
+//Solmaz
+ // Start timing the iteration
+    auto iterStart = std::chrono::high_resolution_clock::now();
+	//Solmaz
 	int choose_num = 0;
 	std::sort(arr, arr + size_res);
 	//std::priority_queue<Res, std::vector<Res>, std::greater<Res>> res;
@@ -598,7 +638,21 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 				break;
 			}
 		}
+
+		//Solmaz
+		// Log the decision for this neighbor
+    	logFile << "Iteration " << i 
+            << ": Considering Neighbor ID=" << curRes.id 
+            << ", Distance=" << curRes.dist;
+			// end update Solmaz
+
 		if (flag) {
+			//Solmaz
+			 logFile << "Neighbor ID=" << curRes.id << ", Distance=" << curRes.dist
+        << (flag ? " - Selected" : " - Skipped due to closer neighbor")
+        << ", Local Density=" << linkLists[curRes.id]->size() // Neighbor's density
+        << "\n";
+			 //Solmaz
 			if (choose_num < i) {
 				Res temp = arr[i];
 				arr[i] = arr[choose_num];
@@ -606,7 +660,19 @@ void divGraph::chooseNN_div(Res* arr, int& size_res)
 			}
 			choose_num++;
 		}
+		
 	}
+//Solmaz
+// Log the final chosen neighbors
+logFile << "Final chosen neighbors for this node: \n";
+for (int i = 0; i < choose_num; ++i) {
+    logFile << "Neighbor " << i << ": ID=" << arr[i].id 
+            << ", Distance=" << arr[i].dist << "\n";
+			//Solmaz
+
+
+}
+
 
 	size_res = choose_num;
 	std::swap(arr[size_res - 1], arr[0]);
@@ -763,76 +829,38 @@ void divGraph::chooseNN(Res* arr, int& size_res, Res new_res)
 #endif
 
 }
-// upate by Solmaz 
 
 void divGraph::oneByOneInsert()
 {
-    linkLists.resize(N, nullptr);
-    int unitL = std::max(efC, maxT);
-    linkListBase.resize((size_t)N * (size_t)unitL + efC);
+	linkLists.resize(N, nullptr);
+	int unitL = max(efC, maxT);
 
-    for (int i = 0; i < N; ++i) {
-        linkLists[i] = new Node2(i, (Res*)(&(linkListBase[i * unitL])));
-    }
+	linkListBase.resize((size_t)N * (size_t)unitL + efC);
+	for (int i = 0; i < N; ++i) {
+		linkLists[i] = new Node2(i, (Res*)(&(linkListBase[i * unitL])));
+	}
 
-    flagStates.resize(N, 'E');
+	flagStates.resize(N, 'E');
 
-    std::vector<int> idx(N);
-    for (int j = 0; j < N; ++j) {
-        idx[j] = j;
-    }
+	hashTables.resize(L);
+	std::vector<mp_mutex>(L).swap(hash_locks_);
 
-    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-    std::shuffle(idx.begin(), idx.end(), std::default_random_engine(seed));
-    first_id = idx[0];
-    insertLSHRefine(idx[0]); // Ensure there is at least one point in the graph before parallelizing
+	int* idx = new int[N];
+	for (int j = 0; j < N; ++j) {
+		idx[j] = j;
+	}
 
-    lsh::progress_display pd(N - 1);
-
-    // Now process points in batches instead of one by one
-    size_t batchSize = 100; // Adjust batch size as necessary
-    size_t totalPoints = idx.size();
-
-    // Process the points in batches
-    for (size_t i = 0; i < totalPoints; i += batchSize) {
-        size_t end = std::min(i + batchSize, totalPoints);
-        std::vector<int> batch(idx.begin() + i, idx.begin() + end);
-        batchInsertLSHRefine(batch); // Insert the batch of points
-        ++pd;
-    }
-}
-
-//void divGraph::oneByOneInsert()
-//{
-//	linkLists.resize(N, nullptr);
-//	int unitL = max(efC, maxT);
-
-//	linkListBase.resize((size_t)N * (size_t)unitL + efC);
-//	for (int i = 0; i < N; ++i) {
-//		linkLists[i] = new Node2(i, (Res*)(&(linkListBase[i * unitL])));
-//	}
-
-//	flagStates.resize(N, 'E');
-
-//	hashTables.resize(L);
-//	std::vector<mp_mutex>(L).swap(hash_locks_);
-
-//	int* idx = new int[N];
-//	for (int j = 0; j < N; ++j) {
-//		idx[j] = j;
-//	}
-
-//	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-//	std::shuffle(idx, idx + N, std::default_random_engine(seed));
-//	first_id = idx[0];
-//	insertLSHRefine(idx[0]);//Ensure there is at least one point in the graph before parallelizing
-//	lsh::progress_display pd(N - 1);
+	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+	std::shuffle(idx, idx + N, std::default_random_engine(seed));
+	first_id = idx[0];
+	insertLSHRefine(idx[0]);//Ensure there is at least one point in the graph before parallelizing
+	lsh::progress_display pd(N - 1);
 
 	// Add data to index
- //   ParallelFor(1, N, 96, [&](size_t i, size_t threadId) {
-  //      insertLSHRefine(idx[i]);
-//		++pd;
- //   });
+    ParallelFor(1, N, 96, [&](size_t i, size_t threadId) {
+        insertLSHRefine(idx[i]);
+		++pd;
+    });
 
 // #pragma omp parallel for //num_threads(32) 
 // 	for (int i = 1; i < N; i++) {
@@ -848,7 +876,7 @@ void divGraph::oneByOneInsert()
 //	}
 
 	//refine();
-//}
+}
 
 void divGraph::refine()
 {
@@ -1373,21 +1401,6 @@ void divGraph::traverse()
 	printf("The union number is:%d\n", flag);
 }
 
-void divGraph::insert(int pId) {
-    // Ensure the point ID is valid and the point is not already in the graph
-    if (pId >= linkLists.size() || linkLists[pId] != nullptr) {
-        std::cerr << "Point " << pId << " already exists in the graph or invalid ID.\n";
-        return;
-    }
-
-    // Allocate memory for the new node
-    int unitL = std::max(efC, maxT);
-    linkLists[pId] = new Node2(pId, (Res*)(&(linkListBase[pId * unitL])));
-
-    // Perform LSH refinement to add neighbors
-    std::cout << "Inserting point " << pId << "...\n";
-    insertLSHRefine(pId);
-}
 
 void divGraph::save(const std::string & file)
 {
