@@ -12,15 +12,7 @@ This repository extends the original LSH-APG framework with enhanced functionali
 ## Installation
 The installation process remains the same, with added support for batch operations:
 
-### Windows
-Use Visual Studio 2019 to build the project, ensuring all files in `./cppCode/LSH-APG/src/` are included.
 
-### Linux
-Run the following commands to build the project:
-
-```bash
-cd ./cppCode/LSH-APG
-make
 -----------------------------------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------
 # The Source Code for LSH-APG (PVLDB 2023)
