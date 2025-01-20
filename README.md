@@ -1,3 +1,28 @@
+# LSH-APG-Batches
+
+## Introduction
+This repository extends the original LSH-APG framework with enhanced functionality for batch processing and incremental updates. The improvements aim to optimize index construction and approximate nearest neighbor search in high-dimensional spaces.
+
+## Key Enhancements
+- **Batch Processing:** Added efficient batch insertion and update mechanisms to handle dynamic datasets.
+- **Parallelism Optimization:** Improved OpenMP utilization for faster index building and query execution.
+- **Enhanced Dataset Handling:** New scripts for seamless dataset transformation and loading.
+- **Performance Benchmarking:** Added benchmarking tools to evaluate indexing efficiency across different configurations.
+
+## Installation
+The installation process remains the same, with added support for batch operations:
+
+### Windows
+Use Visual Studio 2019 to build the project, ensuring all files in `./cppCode/LSH-APG/src/` are included.
+
+### Linux
+Run the following commands to build the project:
+
+```bash
+cd ./cppCode/LSH-APG
+make
+-----------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------
 # The Source Code for LSH-APG (PVLDB 2023)
 -----------------------------------------------------------------------------------------------------------------
 ## Introduction
